@@ -11,6 +11,7 @@ from scapy.sendrecv import sniff
 
 InterfaceLister = Callable[[], Sequence[str]]
 PacketCallback = Callable[[Packet], None]
+PacketStopFilter = Callable[[Packet], bool]
 Sniffer = Callable[..., object]
 
 
@@ -41,6 +42,8 @@ class CaptureSource(Protocol):
         *,
         bpf_filter: str | None,
         on_packet: PacketCallback,
+        stop_filter: PacketStopFilter | None = None,
+        timeout: float | None = None,
     ) -> None: ...
 
 
@@ -80,6 +83,8 @@ class CaptureAdapter:
         *,
         bpf_filter: str | None = None,
         on_packet: PacketCallback,
+        stop_filter: PacketStopFilter | None = None,
+        timeout: float | None = None,
     ) -> None:
         """Capture packets transiently and pass each one to ``on_packet``.
 
@@ -91,18 +96,30 @@ class CaptureAdapter:
             raise TypeError("on_packet must be callable")
         if bpf_filter is not None and not isinstance(bpf_filter, str):
             raise TypeError("bpf_filter must be a string or None")
+        if stop_filter is not None and not callable(stop_filter):
+            raise TypeError("stop_filter must be callable or None")
+        if timeout is not None and timeout <= 0:
+            raise ValueError("timeout must be greater than zero")
 
         try:
-            self._sniffer(
-                iface=interface,
-                filter=bpf_filter,
-                prn=on_packet,
-                store=False,
-            )
+            sniff_options: dict[str, object] = {
+                "iface": interface,
+                "filter": bpf_filter,
+                "prn": on_packet,
+                "store": False,
+            }
+            if stop_filter is not None:
+                sniff_options["stop_filter"] = stop_filter
+            if timeout is not None:
+                sniff_options["timeout"] = timeout
+            self._sniffer(**sniff_options)
         except Exception as error:
             if _is_permission_error(error):
                 raise CapturePermissionError(_permission_message()) from error
             raise CaptureBackendError(_backend_message()) from error
+
+    def close(self) -> None:
+        """Release capture resources owned by the backend, if any."""
 
 
 def _is_permission_error(error: Exception) -> bool:

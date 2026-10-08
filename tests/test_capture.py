@@ -82,3 +82,23 @@ def test_capture_does_not_invoke_subprocess(monkeypatch: pytest.MonkeyPatch) -> 
     adapter = CaptureAdapter(interface_lister=lambda: ["lo"], sniffer=lambda **_: None)
 
     adapter.capture("lo", on_packet=lambda _packet: None)
+
+
+def test_capture_forwards_stop_filter_and_timeout() -> None:
+    calls: list[dict[str, Any]] = []
+
+    def fake_sniffer(**kwargs: Any) -> None:
+        calls.append(kwargs)
+
+    adapter = CaptureAdapter(interface_lister=lambda: ["lo"], sniffer=fake_sniffer)
+    stop_filter = lambda _packet: True
+
+    adapter.capture(
+        "lo",
+        on_packet=lambda _packet: None,
+        stop_filter=stop_filter,
+        timeout=5.0,
+    )
+
+    assert calls[0]["stop_filter"] is stop_filter
+    assert calls[0]["timeout"] == 5.0
