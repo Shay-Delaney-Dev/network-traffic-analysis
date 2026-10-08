@@ -110,6 +110,19 @@ def test_missing_live_interface_is_invalid_cli_input(
     assert "Traceback" not in output
 
 
+def test_live_can_list_interfaces(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    class FakeAdapter:
+        def list_interfaces(self) -> tuple[str, ...]:
+            return ("eth0", "lo")
+
+    monkeypatch.setattr("traffic_analyser.cli.CaptureAdapter", FakeAdapter)
+
+    assert main(["live", "--list-interfaces"]) == int(ExitCode.SUCCESS)
+    assert capsys.readouterr().out == "eth0\nlo\n"
+
+
 def test_expected_handler_failure_has_no_traceback(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
