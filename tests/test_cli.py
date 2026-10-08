@@ -123,6 +123,22 @@ def test_live_can_list_interfaces(
     assert capsys.readouterr().out == "eth0\nlo\n"
 
 
+def test_live_handler_reports_partial_analysis_and_forwards_filter(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    calls: list[tuple[str, str | None]] = []
+
+    def fake_live(_source, interface, _limits, *, bpf_filter):
+        calls.append((interface, bpf_filter))
+        return AnalysisResult()
+
+    monkeypatch.setattr("traffic_analyser.cli.analyze_live", fake_live)
+
+    assert main(["live", "--interface", "eth0", "--filter", "tcp"]) == 0
+    assert calls == [("eth0", "tcp")]
+    assert "Input: live (eth0)" in capsys.readouterr().out
+
+
 def test_expected_handler_failure_has_no_traceback(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

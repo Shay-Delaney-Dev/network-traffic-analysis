@@ -32,7 +32,7 @@ from traffic_analyser.visualization import (
     save_plots,
     show_plots,
 )
-from traffic_analyser.workflow import analyze_offline
+from traffic_analyser.workflow import analyze_live, analyze_offline
 
 CommandHandler = Callable[[argparse.Namespace], int | ExitCode | None]
 
@@ -198,7 +198,7 @@ def _resource_limits(args: argparse.Namespace) -> ResourceLimits:
 
 
 def run_live(args: argparse.Namespace) -> int:
-    """List interfaces now; bounded live capture is owned by Ticket 15."""
+    """List interfaces or run bounded live analysis."""
     if args.list_interfaces:
         try:
             print("\n".join(CaptureAdapter().list_interfaces()))
@@ -207,12 +207,37 @@ def run_live(args: argparse.Namespace) -> int:
                 AnalysisError(ErrorCategory.CAPTURE_BACKEND, str(error))
             ) from error
         return int(ExitCode.SUCCESS)
-    raise _CliFailure(
-        AnalysisError(
-            ErrorCategory.CAPTURE_BACKEND,
-            "live capture workflow is not available yet",
+    try:
+        args.analysis_result = analyze_live(
+            CaptureAdapter(),
+            args.interface,
+            args.limits,
+            bpf_filter=args.filter,
+        )
+    except CaptureError as error:
+        raise _CliFailure(
+            AnalysisError(ErrorCategory.CAPTURE_BACKEND, str(error))
+        ) from error
+    print(
+        render_report(
+            args.analysis_result,
+            input_type="live",
+            identity=args.interface,
+            redact=args.redact,
         )
     )
+    if args.show_plots or args.save_plots:
+        prepare_plot_backend(interactive=args.show_plots)
+        try:
+            if args.save_plots:
+                save_plots(args.analysis_result, args.save_plots, redact=args.redact)
+            if args.show_plots:
+                show_plots(args.analysis_result, redact=args.redact)
+        except PlotOutputError as error:
+            raise _CliFailure(
+                AnalysisError(ErrorCategory.INVALID_CLI_INPUT, str(error))
+            ) from error
+    return int(ExitCode.SUCCESS)
 
 
 def run_pcap(args: argparse.Namespace) -> int:
