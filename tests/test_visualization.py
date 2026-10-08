@@ -121,3 +121,17 @@ def test_save_plots_rejects_missing_directory(tmp_path) -> None:
         assert "existing directory" in str(error)
     else:
         raise AssertionError("missing output directory was accepted")
+
+
+def test_save_plots_rejects_symbolic_link_directory(tmp_path) -> None:
+    target = tmp_path / "target"
+    target.mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(target, target_is_directory=True)
+
+    try:
+        save_plots(AnalysisResult(), link)
+    except PlotOutputError as error:
+        assert "symbolic link" in str(error)
+    else:
+        raise AssertionError("symbolic-link output directory was accepted")

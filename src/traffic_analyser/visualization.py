@@ -96,6 +96,8 @@ def save_plots(
 ) -> tuple[Path, ...]:
     """Save all charts to an existing writable directory without overwriting."""
     output_directory = Path(directory)
+    if output_directory.is_symlink():
+        raise PlotOutputError("plot output directory must not be a symbolic link")
     if not output_directory.is_dir():
         raise PlotOutputError("plot output directory must be an existing directory")
     if not os.access(output_directory, os.W_OK):
@@ -154,8 +156,8 @@ __all__ = [
     "PLOT_FILENAMES",
     "PlotOutputError",
     "packet_size_distribution_chart",
-    "protocol_distribution_chart",
     "prepare_plot_backend",
+    "protocol_distribution_chart",
     "save_plots",
     "show_plots",
     "top_endpoints_chart",
