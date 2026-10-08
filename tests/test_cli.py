@@ -3,7 +3,7 @@ import argparse
 import pytest
 
 from traffic_analyser.cli import build_parser, dispatch, main
-from traffic_analyser.models import ExitCode
+from traffic_analyser.models import AnalysisResult, ExitCode
 
 
 def test_parser_supports_live_options() -> None:
@@ -117,6 +117,23 @@ def test_expected_handler_failure_has_no_traceback(
     output = capsys.readouterr().err
     assert "offline input is missing or unreadable" in output
     assert "Traceback" not in output
+
+
+def test_pcap_handler_prints_standard_report(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        "traffic_analyser.cli.analyze_offline",
+        lambda _path, _limits: AnalysisResult(),
+    )
+
+    assert main(["pcap", "capture.pcap"]) == int(ExitCode.SUCCESS)
+    output = capsys.readouterr().out
+
+    assert "Traffic analysis report" in output
+    assert "Input: pcap (capture.pcap)" in output
+    assert "No packets captured." in output
 
 
 def test_keyboard_interrupt_is_handled_at_cli_boundary(

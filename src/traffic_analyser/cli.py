@@ -24,6 +24,7 @@ from traffic_analyser.limits import (
 )
 from traffic_analyser.models import AnalysisError, ErrorCategory, ExitCode
 from traffic_analyser.pcap_reader import OfflineInputError
+from traffic_analyser.reporting import render_report
 from traffic_analyser.workflow import analyze_offline
 
 CommandHandler = Callable[[argparse.Namespace], int | ExitCode | None]
@@ -207,6 +208,14 @@ def run_pcap(args: argparse.Namespace) -> int:
         raise _CliFailure(
             AnalysisError(ErrorCategory.OFFLINE_INPUT, str(error))
         ) from error
+    print(
+        render_report(
+            args.analysis_result,
+            input_type="pcap",
+            identity=args.path,
+            redact=args.redact,
+        )
+    )
     return int(ExitCode.SUCCESS)
 
 
