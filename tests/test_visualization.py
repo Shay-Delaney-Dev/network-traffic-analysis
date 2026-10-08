@@ -18,8 +18,11 @@ from traffic_analyser.models import (
     TimeBucket,
 )
 from traffic_analyser.visualization import (
+    PLOT_FILENAMES,
+    PlotOutputError,
     packet_size_distribution_chart,
     protocol_distribution_chart,
+    save_plots,
     top_endpoints_chart,
     traffic_volume_chart,
 )
@@ -93,3 +96,28 @@ def test_endpoint_labels_are_redacted_and_payloads_are_not_plotted() -> None:
     assert "payload" not in rendered_text
     assert "<redacted:" in rendered_text
     figure.clf()
+
+
+def test_save_plots_creates_predictable_files_without_overwriting(tmp_path) -> None:
+    paths = save_plots(populated_result(), tmp_path, redact=True)
+
+    assert tuple(path.name for path in paths) == PLOT_FILENAMES
+    assert all(path.is_file() for path in paths)
+
+    try:
+        save_plots(populated_result(), tmp_path)
+    except PlotOutputError as error:
+        assert "refusing to overwrite" in str(error)
+    else:
+        raise AssertionError("existing plot output was overwritten")
+
+
+def test_save_plots_rejects_missing_directory(tmp_path) -> None:
+    missing = tmp_path / "missing"
+
+    try:
+        save_plots(AnalysisResult(), missing)
+    except PlotOutputError as error:
+        assert "existing directory" in str(error)
+    else:
+        raise AssertionError("missing output directory was accepted")

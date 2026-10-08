@@ -25,6 +25,12 @@ from traffic_analyser.limits import (
 from traffic_analyser.models import AnalysisError, ErrorCategory, ExitCode
 from traffic_analyser.pcap_reader import OfflineInputError
 from traffic_analyser.reporting import render_report
+from traffic_analyser.visualization import (
+    PlotOutputError,
+    prepare_plot_backend,
+    save_plots,
+    show_plots,
+)
 from traffic_analyser.workflow import analyze_offline
 
 CommandHandler = Callable[[argparse.Namespace], int | ExitCode | None]
@@ -216,6 +222,21 @@ def run_pcap(args: argparse.Namespace) -> int:
             redact=args.redact,
         )
     )
+    if args.show_plots or args.save_plots:
+        prepare_plot_backend(interactive=args.show_plots)
+        try:
+            if args.save_plots:
+                save_plots(
+                    args.analysis_result,
+                    args.save_plots,
+                    redact=args.redact,
+                )
+            if args.show_plots:
+                show_plots(args.analysis_result, redact=args.redact)
+        except PlotOutputError as error:
+            raise _CliFailure(
+                AnalysisError(ErrorCategory.INVALID_CLI_INPUT, str(error))
+            ) from error
     return int(ExitCode.SUCCESS)
 
 
