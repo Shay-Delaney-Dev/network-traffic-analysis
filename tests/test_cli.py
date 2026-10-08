@@ -115,7 +115,7 @@ def test_expected_handler_failure_has_no_traceback(
 ) -> None:
     assert main(["pcap", "missing.pcap"]) == int(ExitCode.OFFLINE_INPUT_ERROR)
     output = capsys.readouterr().err
-    assert "offline analysis workflow is not available yet" in output
+    assert "offline input is missing or unreadable" in output
     assert "Traceback" not in output
 
 

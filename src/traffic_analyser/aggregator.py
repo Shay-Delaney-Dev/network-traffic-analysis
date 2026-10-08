@@ -90,6 +90,10 @@ class Aggregator:
             return
         raise TypeError("aggregator input must be PacketMetadata or DecodeResult")
 
+    def add_warning(self, warning: ProcessingWarning) -> None:
+        """Retain one bounded warning from an acquisition source."""
+        self._warnings.add(warning)
+
     consume = add
 
     def result(self) -> AnalysisResult:
