@@ -8,6 +8,7 @@ import sys
 from collections.abc import Callable, Sequence
 
 from traffic_analyser import __version__
+from traffic_analyser.capture import CaptureAdapter, CaptureError
 from traffic_analyser.limits import (
     DEFAULT_BUCKET_SIZE,
     DEFAULT_BYTE_COUNT,
@@ -197,7 +198,15 @@ def _resource_limits(args: argparse.Namespace) -> ResourceLimits:
 
 
 def run_live(args: argparse.Namespace) -> int:
-    """Placeholder live workflow boundary for the capture ticket."""
+    """List interfaces now; bounded live capture is owned by Ticket 15."""
+    if args.list_interfaces:
+        try:
+            print("\n".join(CaptureAdapter().list_interfaces()))
+        except CaptureError as error:
+            raise _CliFailure(
+                AnalysisError(ErrorCategory.CAPTURE_BACKEND, str(error))
+            ) from error
+        return int(ExitCode.SUCCESS)
     raise _CliFailure(
         AnalysisError(
             ErrorCategory.CAPTURE_BACKEND,
