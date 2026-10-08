@@ -1,4 +1,7 @@
 /docs
+!/docs/
+/docs/*
+!/docs/RELEASE_READINESS.md
 /.github
 .venv/
 venv/
