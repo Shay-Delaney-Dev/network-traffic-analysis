@@ -2,11 +2,26 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
+import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
 from traffic_analyser.models import AnalysisResult
 from traffic_analyser.privacy import Redactor
+
+PLOT_FILENAMES = (
+    "traffic_volume.png",
+    "protocol_distribution.png",
+    "top_endpoints.png",
+    "packet_size_distribution.png",
+)
+
+
+class PlotOutputError(ValueError):
+    """Raised when plot output cannot be safely displayed or saved."""
 
 
 def traffic_volume_chart(result: AnalysisResult) -> Figure:
@@ -73,14 +88,76 @@ def packet_size_distribution_chart(result: AnalysisResult) -> Figure:
     return figure
 
 
+def save_plots(
+    result: AnalysisResult,
+    directory: str | os.PathLike[str],
+    *,
+    redact: bool = False,
+) -> tuple[Path, ...]:
+    """Save all charts to an existing writable directory without overwriting."""
+    output_directory = Path(directory)
+    if not output_directory.is_dir():
+        raise PlotOutputError("plot output directory must be an existing directory")
+    if not os.access(output_directory, os.W_OK):
+        raise PlotOutputError("plot output directory is not writable")
+
+    output_paths = tuple(output_directory / name for name in PLOT_FILENAMES)
+    existing = next((path for path in output_paths if path.exists()), None)
+    if existing is not None:
+        raise PlotOutputError(f"refusing to overwrite existing plot: {existing.name}")
+
+    figures = _build_figures(result, redact=redact)
+    try:
+        for figure, output_path in zip(figures, output_paths):
+            figure.savefig(output_path)
+    except OSError as error:
+        for output_path in output_paths:
+            output_path.unlink(missing_ok=True)
+        raise PlotOutputError(f"unable to save plots: {error}") from error
+    finally:
+        for figure in figures:
+            plt.close(figure)
+    return output_paths
+
+
+def show_plots(result: AnalysisResult, *, redact: bool = False) -> None:
+    """Display all charts only when the caller explicitly requests it."""
+    figures = _build_figures(result, redact=redact)
+    try:
+        plt.show()
+    finally:
+        for figure in figures:
+            plt.close(figure)
+
+
+def _build_figures(result: AnalysisResult, *, redact: bool) -> tuple[Figure, ...]:
+    return (
+        traffic_volume_chart(result),
+        protocol_distribution_chart(result),
+        top_endpoints_chart(result, redact=redact),
+        packet_size_distribution_chart(result),
+    )
+
+
+def prepare_plot_backend(*, interactive: bool) -> None:
+    """Select a non-interactive backend whenever display was not requested."""
+    if not interactive:
+        matplotlib.use("Agg")
+
+
 def _empty(axis: object, message: str) -> None:
     axis.text(0.5, 0.5, message, ha="center", va="center")  # type: ignore[attr-defined]
     axis.set_axis_off()  # type: ignore[attr-defined]
 
 
 __all__ = [
+    "PLOT_FILENAMES",
+    "PlotOutputError",
     "packet_size_distribution_chart",
     "protocol_distribution_chart",
+    "prepare_plot_backend",
+    "save_plots",
+    "show_plots",
     "top_endpoints_chart",
     "traffic_volume_chart",
 ]

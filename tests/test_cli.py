@@ -136,6 +136,97 @@ def test_pcap_handler_prints_standard_report(
     assert "No packets captured." in output
 
 
+def test_pcap_save_plots_writes_four_files(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setattr(
+        "traffic_analyser.cli.analyze_offline",
+        lambda _path, _limits: AnalysisResult(),
+    )
+
+    assert main(["pcap", "capture.pcap", "--save-plots", str(tmp_path)]) == 0
+    assert {path.name for path in tmp_path.iterdir()} == {
+        "traffic_volume.png",
+        "protocol_distribution.png",
+        "top_endpoints.png",
+        "packet_size_distribution.png",
+    }
+
+
+def test_pcap_plot_modes_are_explicit(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setattr(
+        "traffic_analyser.cli.analyze_offline",
+        lambda _path, _limits: AnalysisResult(),
+    )
+    shown: list[bool] = []
+    monkeypatch.setattr(
+        "traffic_analyser.cli.show_plots",
+        lambda _result, *, redact: shown.append(redact),
+    )
+
+    assert main(["pcap", "capture.pcap", "--show-plots"]) == 0
+    assert shown == [False]
+    assert not list(tmp_path.iterdir())
+
+
+def test_pcap_can_save_and_display_when_both_are_requested(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setattr(
+        "traffic_analyser.cli.analyze_offline",
+        lambda _path, _limits: AnalysisResult(),
+    )
+    calls: list[str] = []
+    monkeypatch.setattr(
+        "traffic_analyser.cli.save_plots",
+        lambda _result, _directory, *, redact: calls.append("save"),
+    )
+    monkeypatch.setattr(
+        "traffic_analyser.cli.show_plots",
+        lambda _result, *, redact: calls.append("show"),
+    )
+
+    assert (
+        main(
+            [
+                "pcap",
+                "capture.pcap",
+                "--show-plots",
+                "--save-plots",
+                str(tmp_path),
+            ]
+        )
+        == 0
+    )
+    assert calls == ["save", "show"]
+
+
+def test_pcap_plot_output_failure_is_a_clean_cli_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        "traffic_analyser.cli.analyze_offline",
+        lambda _path, _limits: AnalysisResult(),
+    )
+    output_file = tmp_path / "not-a-directory"
+    output_file.write_text("x")
+
+    assert (
+        main(["pcap", "capture.pcap", "--save-plots", str(output_file)])
+        == int(ExitCode.INVALID_CLI_INPUT)
+    )
+    error = capsys.readouterr().err
+    assert "plot output directory" in error
+    assert "Traceback" not in error
+
+
 def test_keyboard_interrupt_is_handled_at_cli_boundary(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
