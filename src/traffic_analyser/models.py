@@ -152,6 +152,12 @@ class ProtocolCounter:
 
 
 @dataclass(frozen=True, slots=True)
+class PacketSizeCounter:
+    size: int
+    packets: int = 0
+
+
+@dataclass(frozen=True, slots=True)
 class TimeBucket:
     start: datetime
     end: datetime
@@ -195,7 +201,7 @@ class AnalysisResult:
     top_source_endpoints: tuple[tuple[EndpointKey, int], ...] = ()
     top_destination_endpoints: tuple[tuple[EndpointKey, int], ...] = ()
     top_conversations: tuple[tuple[ConversationKey, int], ...] = ()
-    packet_sizes: tuple[int, ...] = ()
+    packet_sizes: tuple[PacketSizeCounter, ...] = ()
     processing: ProcessingStatistics = field(default_factory=ProcessingStatistics)
     warnings: tuple[ProcessingWarning, ...] = ()
     dns_summaries: tuple[DnsMetadata, ...] = ()
@@ -251,6 +257,7 @@ __all__ = [
     "HttpMetadata",
     "IPAddress",
     "PacketMetadata",
+    "PacketSizeCounter",
     "ProcessingStatistics",
     "ProcessingWarning",
     "Protocol",
