@@ -8,12 +8,26 @@ from enum import Enum
 from ipaddress import IPv4Address, IPv6Address
 from typing import TypeAlias
 
+from scapy.layers.dns import DNS
+from scapy.layers.http import HTTPRequest, HTTPResponse
 from scapy.layers.inet import ICMP, IP, TCP, UDP
 from scapy.layers.inet6 import IPv6
 from scapy.layers.l2 import Ether
+from scapy.layers.tls.handshake import TLSClientHello, TLSServerHello
+from scapy.layers.tls.record import TLS
 from scapy.packet import NoPayload, Packet
 
-from traffic_analyser.models import PacketMetadata, Protocol
+from traffic_analyser.limits import (
+    DEFAULT_INSPECTED_HEADER_BYTES,
+    DEFAULT_METADATA_STRING_LENGTH,
+)
+from traffic_analyser.models import (
+    DnsMetadata,
+    HttpMetadata,
+    PacketMetadata,
+    Protocol,
+    TlsMetadata,
+)
 
 
 class DecodeStatus(str, Enum):
@@ -32,6 +46,8 @@ class DecodeContext:
     timestamp: datetime | None = None
     captured_length: int | None = None
     original_length: int | None = None
+    inspected_header_bytes: int = DEFAULT_INSPECTED_HEADER_BYTES
+    metadata_string_length: int = DEFAULT_METADATA_STRING_LENGTH
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,6 +104,7 @@ def decode(packet: Packet, context: DecodeContext | None = None) -> DecodeResult
             original_length=original_length,
             link_protocol=link_protocol,
             network_layer=network_layer,
+            context=context,
         )
         return DecodeResult(DecodeStatus.DECODED, metadata=metadata)
     except (AttributeError, IndexError, TypeError, ValueError, OverflowError) as error:
@@ -124,6 +141,7 @@ def _build_metadata(
     original_length: int,
     link_protocol: Protocol | None,
     network_layer: Packet | None,
+    context: DecodeContext,
 ) -> PacketMetadata:
     transport_protocol: Protocol | None = None
     source_address: IPv4Address | IPv6Address | None = None
@@ -183,7 +201,138 @@ def _build_metadata(
         tcp_flags=tcp_flags,
         icmp_type=icmp_type,
         icmp_code=icmp_code,
+        dns=_extract_dns(packet, context),
+        http=_extract_http(packet, context),
+        tls=_extract_tls(packet, context),
     )
+
+
+def _within_header_limit(layer: Packet, context: DecodeContext) -> bool:
+    if context.inspected_header_bytes <= 0:
+        return False
+    try:
+        return len(bytes(layer)) <= context.inspected_header_bytes
+    except (AttributeError, TypeError, ValueError, OverflowError):
+        return False
+
+
+def _bounded_text(value: object, maximum: int) -> str | None:
+    if value is None or not isinstance(value, (bytes, str)) or maximum <= 0:
+        return None
+    try:
+        text = value.decode("ascii") if isinstance(value, bytes) else value
+    except UnicodeDecodeError:
+        return None
+    text = text.strip()
+    if not text or len(text) > maximum or "\x00" in text:
+        return None
+    return text
+
+
+def _extract_dns(packet: Packet, context: DecodeContext) -> DnsMetadata | None:
+    layer = packet.getlayer(DNS)
+    if layer is None or not _within_header_limit(layer, context):
+        return None
+    question = getattr(layer, "qd", None)
+    query_name = (
+        _bounded_text(getattr(question, "qname", None), context.metadata_string_length)
+        if question is not None
+        else None
+    )
+    try:
+        response_code = int(layer.rcode)
+        is_response = bool(layer.qr)
+    except (AttributeError, TypeError, ValueError):
+        return None
+    if query_name is None and not is_response and response_code == 0:
+        return None
+    return DnsMetadata(query_name=query_name, response_code=response_code, is_response=is_response)
+
+
+def _extract_http(packet: Packet, context: DecodeContext) -> HttpMetadata | None:
+    request = packet.getlayer(HTTPRequest)
+    response = packet.getlayer(HTTPResponse)
+    layer = request or response
+    if layer is None or not _within_header_limit(layer, context):
+        return None
+    if request is not None:
+        if any(
+            _exceeds_string_limit(getattr(request, field_name), context.metadata_string_length)
+            for field_name in ("Method", "Host", "Path")
+        ):
+            return None
+        method = _bounded_text(getattr(request, "Method", None), context.metadata_string_length)
+        host = _bounded_text(getattr(request, "Host", None), context.metadata_string_length)
+        path = _bounded_text(getattr(request, "Path", None), context.metadata_string_length)
+        if path is not None:
+            path = path.split("?", 1)[0].split("#", 1)[0]
+            if "://" in path or len(path) > context.metadata_string_length:
+                path = None
+        if method is None and host is None and path is None:
+            return None
+        return HttpMetadata(method=method, host=host, path=path)
+    status = _bounded_text(getattr(response, "Status_Code", None), context.metadata_string_length)
+    try:
+        status_code = int(status) if status is not None else None
+    except ValueError:
+        status_code = None
+    return HttpMetadata(status=status_code) if status_code is not None else None
+
+
+def _extract_tls(packet: Packet, context: DecodeContext) -> TlsMetadata | None:
+    tls = packet.getlayer(TLS)
+    client_hello = packet.getlayer(TLSClientHello)
+    server_hello = packet.getlayer(TLSServerHello)
+    hello = client_hello or server_hello
+    if tls is None or hello is None or not _within_header_limit(hello, context):
+        return None
+    version = _bounded_text(
+        _tls_version(getattr(hello, "version", None)), context.metadata_string_length
+    )
+    handshake_type = _bounded_text(
+        _tls_handshake_type(getattr(hello, "msgtype", None)), context.metadata_string_length
+    )
+    server_name = _extract_tls_server_name(hello, context.metadata_string_length)
+    if version is None and handshake_type is None and server_name is None:
+        return None
+    return TlsMetadata(version=version, handshake_type=handshake_type, server_name=server_name)
+
+
+def _stringify(value: object) -> str | None:
+    return None if value is None else str(value)
+
+
+def _exceeds_string_limit(value: object, maximum: int) -> bool:
+    return isinstance(value, (bytes, str)) and len(value) > maximum
+
+
+def _tls_handshake_type(value: object) -> str | None:
+    if isinstance(value, int):
+        return {1: "client_hello", 2: "server_hello"}.get(value, str(value))
+    return _stringify(value)
+
+
+def _tls_version(value: object) -> str | None:
+    if value is None:
+        return None
+    versions = {
+        0x0301: "TLS 1.0",
+        0x0302: "TLS 1.1",
+        0x0303: "TLS 1.2",
+        0x0304: "TLS 1.3",
+    }
+    return versions.get(value) if isinstance(value, int) else str(value)
+
+
+def _extract_tls_server_name(hello: Packet, maximum: int) -> str | None:
+    for extension in getattr(hello, "ext", None) or ():
+        if extension.__class__.__name__ != "TLS_Ext_ServerName":
+            continue
+        for server_name in getattr(extension, "servernames", None) or ():
+            value = _bounded_text(getattr(server_name, "servername", server_name), maximum)
+            if value is not None:
+                return value
+    return None
 
 
 def _icmpv6_layer(packet: Packet) -> Packet | None:
