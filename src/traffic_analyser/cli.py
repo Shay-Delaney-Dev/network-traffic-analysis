@@ -23,6 +23,8 @@ from traffic_analyser.limits import (
     validate_positive_int,
 )
 from traffic_analyser.models import AnalysisError, ErrorCategory, ExitCode
+from traffic_analyser.pcap_reader import OfflineInputError
+from traffic_analyser.workflow import analyze_offline
 
 CommandHandler = Callable[[argparse.Namespace], int | ExitCode | None]
 
@@ -198,13 +200,14 @@ def run_live(args: argparse.Namespace) -> int:
 
 
 def run_pcap(args: argparse.Namespace) -> int:
-    """Placeholder offline workflow boundary for the reader ticket."""
-    raise _CliFailure(
-        AnalysisError(
-            ErrorCategory.OFFLINE_INPUT,
-            "offline analysis workflow is not available yet",
-        )
-    )
+    """Run bounded offline analysis and retain its result for reporting."""
+    try:
+        args.analysis_result = analyze_offline(args.path, args.limits)
+    except OfflineInputError as error:
+        raise _CliFailure(
+            AnalysisError(ErrorCategory.OFFLINE_INPUT, str(error))
+        ) from error
+    return int(ExitCode.SUCCESS)
 
 
 def dispatch(
