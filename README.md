@@ -183,12 +183,21 @@ Run the test suite and configured static checks from an activated environment:
 pytest
 ruff check .
 mypy src
+pip-audit --local
 ```
 
 The tests use deterministic packets and headless Matplotlib fixtures. They do
 not require access to a third-party network; live capture is tested through
 mocked adapters. They also check redaction, bounded limits, safe plot output,
 metadata-only models, and the absence of subprocess capture tooling.
+
+The 2026-10-08 dependency review found no known vulnerabilities in the final
+installed environment. The initial environment contained vulnerable `pip 24.0`
+and `pytest 8.4.2`; the final environment uses `pip` 26.2.1 and `pytest` 9.x,
+and the development constraints require `pytest` 9.x. The application is not
+published on PyPI, so `pip-audit` reports it as not auditable by package name;
+its declared runtime dependencies remain constrained in `pyproject.toml` and
+are audited through the installed environment.
 
 ## Known limitations and future work
 
