@@ -13,3 +13,5 @@ __pycache__/
 .ruff_cache/
 build/
 dist/
+/sample_files
+/reports
