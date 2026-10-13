@@ -1,3 +1,4 @@
+import re
 from datetime import UTC, datetime
 from ipaddress import IPv4Address
 
@@ -7,6 +8,7 @@ matplotlib.use("Agg")
 
 from matplotlib.figure import Figure
 
+from traffic_analyser import visualization
 from traffic_analyser.models import (
     AnalysisResult,
     ConversationKey,
@@ -18,7 +20,7 @@ from traffic_analyser.models import (
     TimeBucket,
 )
 from traffic_analyser.visualization import (
-    PLOT_FILENAMES,
+    PLOT_FILENAME_STEMS,
     PlotOutputError,
     packet_size_distribution_chart,
     protocol_distribution_chart,
@@ -98,18 +100,51 @@ def test_endpoint_labels_are_redacted_and_payloads_are_not_plotted() -> None:
     figure.clf()
 
 
-def test_save_plots_creates_predictable_files_without_overwriting(tmp_path) -> None:
+def test_save_plots_creates_timestamped_files(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(visualization, "_timestamp", lambda: "20261013T120000Z")
     paths = save_plots(populated_result(), tmp_path, redact=True)
 
-    assert tuple(path.name for path in paths) == PLOT_FILENAMES
+    assert tuple(path.stem.rsplit("_", 1)[0] for path in paths) == PLOT_FILENAME_STEMS
+    assert all(
+        re.fullmatch(
+            r"(?:traffic_volume|protocol_distribution|top_endpoints|packet_size_distribution)_20261013T120000Z",
+            path.stem,
+        )
+        for path in paths
+    )
     assert all(path.is_file() for path in paths)
 
+
+def test_save_plots_preserves_prior_run_on_same_timestamp(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(visualization, "_timestamp", lambda: "20261013T120000Z")
+
+    first_paths = save_plots(populated_result(), tmp_path)
+    second_paths = save_plots(populated_result(), tmp_path)
+
+    assert set(first_paths).isdisjoint(second_paths)
+    assert all(path.is_file() for path in first_paths + second_paths)
+    assert all(path.stem.endswith("_1") for path in second_paths)
+
+
+def test_save_plots_cleans_partial_run_without_deleting_prior_run(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(visualization, "_timestamp", lambda: "20261013T120000Z")
+    first_paths = save_plots(populated_result(), tmp_path)
+
+    def fail_savefig(self, output_path) -> None:
+        raise OSError("simulated output failure")
+
+    monkeypatch.setattr("matplotlib.figure.Figure.savefig", fail_savefig)
     try:
         save_plots(populated_result(), tmp_path)
     except PlotOutputError as error:
-        assert "refusing to overwrite" in str(error)
+        assert "unable to save plots" in str(error)
     else:
-        raise AssertionError("existing plot output was overwritten")
+        raise AssertionError("partial plot output failure was not reported")
+
+    assert all(path.is_file() for path in first_paths)
+    assert len(tuple(tmp_path.glob("*.png"))) == 4
 
 
 def test_save_plots_rejects_missing_directory(tmp_path) -> None:
