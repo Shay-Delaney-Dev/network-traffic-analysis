@@ -1,4 +1,5 @@
 import argparse
+import re
 
 import pytest
 
@@ -175,12 +176,37 @@ def test_pcap_save_plots_writes_four_files(
     )
 
     assert main(["pcap", "capture.pcap", "--save-plots", str(tmp_path)]) == 0
-    assert {path.name for path in tmp_path.iterdir()} == {
-        "traffic_volume.png",
-        "protocol_distribution.png",
-        "top_endpoints.png",
-        "packet_size_distribution.png",
-    }
+    names = {path.name for path in tmp_path.iterdir()}
+    assert len(names) == 4
+    assert all(
+        re.fullmatch(
+            r"(?:traffic_volume|protocol_distribution|top_endpoints|packet_size_distribution)_\d{8}T\d{6}Z\.png",
+            name,
+        )
+        for name in names
+    )
+
+
+def test_live_save_plots_writes_four_timestamped_files(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    monkeypatch.setattr(
+        "traffic_analyser.cli.analyze_live", lambda *_args, **_kwargs: AnalysisResult()
+    )
+
+    assert (
+        main(
+            [
+                "live",
+                "--interface",
+                "eth0",
+                "--save-plots",
+                str(tmp_path),
+            ]
+        )
+        == 0
+    )
+    assert len(tuple(tmp_path.glob("*.png"))) == 4
 
 
 def test_pcap_plot_modes_are_explicit(

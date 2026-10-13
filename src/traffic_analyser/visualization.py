@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 
 import matplotlib
@@ -12,12 +13,14 @@ from matplotlib.figure import Figure
 from traffic_analyser.models import AnalysisResult
 from traffic_analyser.privacy import Redactor
 
-PLOT_FILENAMES = (
-    "traffic_volume.png",
-    "protocol_distribution.png",
-    "top_endpoints.png",
-    "packet_size_distribution.png",
+PLOT_FILENAME_STEMS = (
+    "traffic_volume",
+    "protocol_distribution",
+    "top_endpoints",
+    "packet_size_distribution",
 )
+PLOT_TIMESTAMP_FORMAT = "%Y%m%dT%H%M%SZ"
+MAX_FILENAME_COLLISIONS = 1000
 
 
 class PlotOutputError(ValueError):
@@ -94,7 +97,7 @@ def save_plots(
     *,
     redact: bool = False,
 ) -> tuple[Path, ...]:
-    """Save all charts to an existing writable directory without overwriting."""
+    """Save all charts to an existing writable directory with unique names."""
     output_directory = Path(directory)
     if output_directory.is_symlink():
         raise PlotOutputError("plot output directory must not be a symbolic link")
@@ -103,10 +106,7 @@ def save_plots(
     if not os.access(output_directory, os.W_OK):
         raise PlotOutputError("plot output directory is not writable")
 
-    output_paths = tuple(output_directory / name for name in PLOT_FILENAMES)
-    existing = next((path for path in output_paths if path.exists()), None)
-    if existing is not None:
-        raise PlotOutputError(f"refusing to overwrite existing plot: {existing.name}")
+    output_paths = _next_output_paths(output_directory)
 
     figures = _build_figures(result, redact=redact)
     try:
@@ -120,6 +120,23 @@ def save_plots(
         for figure in figures:
             plt.close(figure)
     return output_paths
+
+
+def _timestamp() -> str:
+    return datetime.now(UTC).strftime(PLOT_TIMESTAMP_FORMAT)
+
+
+def _next_output_paths(output_directory: Path) -> tuple[Path, ...]:
+    timestamp = _timestamp()
+    for collision in range(MAX_FILENAME_COLLISIONS):
+        suffix = "" if collision == 0 else f"_{collision}"
+        output_paths = tuple(
+            output_directory / f"{stem}_{timestamp}{suffix}.png"
+            for stem in PLOT_FILENAME_STEMS
+        )
+        if all(not path.exists() for path in output_paths):
+            return output_paths
+    raise PlotOutputError("unable to generate a unique timestamped plot filename")
 
 
 def show_plots(result: AnalysisResult, *, redact: bool = False) -> None:
@@ -153,7 +170,8 @@ def _empty(axis: object, message: str) -> None:
 
 
 __all__ = [
-    "PLOT_FILENAMES",
+    "PLOT_FILENAME_STEMS",
+    "PLOT_TIMESTAMP_FORMAT",
     "PlotOutputError",
     "packet_size_distribution_chart",
     "prepare_plot_backend",

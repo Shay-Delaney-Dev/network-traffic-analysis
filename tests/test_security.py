@@ -62,10 +62,19 @@ def test_source_has_no_raw_capture_writers_or_payload_logging() -> None:
         assert not any(term in source for term in forbidden_terms), path
 
 
-def test_generated_plot_names_are_fixed_safe_basenames() -> None:
-    from traffic_analyser.visualization import PLOT_FILENAMES
+def test_generated_plot_names_are_timestamped_safe_basenames() -> None:
+    import tempfile
 
-    assert all(re.fullmatch(r"[a-z0-9_]+\.png", name) for name in PLOT_FILENAMES)
+    from traffic_analyser.models import AnalysisResult
+    from traffic_analyser.visualization import save_plots
+
+    with tempfile.TemporaryDirectory() as directory:
+        paths = save_plots(AnalysisResult(), directory)
+
+    assert all(
+        re.fullmatch(r"[a-z0-9_]+_\d{8}T\d{6}Z(?:_\d+)?\.png", path.name)
+        for path in paths
+    )
 
 
 def test_normalized_models_do_not_expose_raw_packet_or_payload_fields() -> None:

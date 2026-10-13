@@ -121,7 +121,7 @@ def _add_shared_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--save-plots",
         metavar="DIRECTORY",
-        help="save plots to DIRECTORY after analysis",
+        help="save timestamped plots to DIRECTORY after analysis",
     )
     parser.add_argument(
         "--log-level",
