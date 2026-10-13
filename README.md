@@ -145,10 +145,13 @@ packet-size information, available protocol metadata, and warnings. Empty,
 all-skipped, and no-observable-field inputs render a clear report rather than
 failing.
 
-Console output uses Rich styling when the terminal is interactive and supports
-colour. In non-interactive terminals, redirected output, or when colour output
-is disabled via `NO_COLOR`, the same bounded report is rendered as plain text so
-scripts and logs remain deterministic and easy to capture.
+Console output uses stable semantic Rich styles for section headings, totals,
+protocols, identifiers, ports, available metadata, and warnings when the
+terminal is interactive and supports colour. Labels and wording retain the
+meaning, so colour is supplementary and remains readable on supported light and
+dark terminals. In non-interactive terminals, redirected output, or when colour
+output is disabled via `NO_COLOR`, the same bounded report is rendered as plain
+text so scripts and logs remain deterministic and easy to capture.
 
 Plots are opt-in. `--show-plots` displays them, `--save-plots DIRECTORY`
 saves them, and using neither option does neither. Both options may be used

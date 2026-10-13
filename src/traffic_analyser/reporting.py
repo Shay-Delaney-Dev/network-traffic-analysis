@@ -3,27 +3,82 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TextIO
 
+from traffic_analyser.models import AnalysisResult, ProcessingWarning
+from traffic_analyser.privacy import Redactor
+
 if TYPE_CHECKING:
     from rich.console import Console as ConsoleType
+    from rich.text import Text as TextType
 
 rich_console_cls: Any | None
 rich_panel_cls: Any | None
+rich_text_cls: type[TextType] | None
 
 try:
     from rich.console import Console as _RichConsole
     from rich.panel import Panel as _RichPanel
+    from rich.text import Text as _RichText
     rich_console_cls = _RichConsole
     rich_panel_cls = _RichPanel
+    rich_text_cls = _RichText
 except ImportError:  # pragma: no cover - optional runtime dependency fallback
     rich_console_cls = None
     rich_panel_cls = None
+    rich_text_cls = None
 
-from traffic_analyser.models import AnalysisResult, ProcessingWarning
-from traffic_analyser.privacy import Redactor
+REPORT_STYLES = {
+    "title": "bold cyan",
+    "section": "bold cyan",
+    "protocol": "bold green",
+    "identifier": "yellow",
+    "port": "magenta",
+    "total": "bold white",
+    "available": "green",
+    "unavailable": "dim",
+    "warning": "bold yellow",
+}
+
+_SECTION_NAMES = {
+    "Time range",
+    "Totals",
+    "Processing",
+    "Traffic volume",
+    "Protocol distribution",
+    "Top source endpoints",
+    "Top destination endpoints",
+    "Top conversations",
+    "Packet-size summary",
+    "DNS metadata",
+    "HTTP metadata",
+    "TLS metadata",
+    "Processing warnings",
+}
+_UNAVAILABLE_MARKER = "No "
+_AVAILABLE_MARKERS = ("DnsMetadata(", "HttpMetadata(", "TlsMetadata(")
+_PORT_PATTERN = re.compile(r":\d+(?=\D|$)")
+_IDENTIFIER_PATTERNS = (
+    re.compile(r"<redacted:[^>]+>"),
+    re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b"),
+    re.compile(r"\b[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,}\b"),
+)
+_PROTOCOL_NAMES = {
+    "ethernet",
+    "ipv4",
+    "ipv6",
+    "tcp",
+    "udp",
+    "icmp",
+    "icmpv6",
+    "dns",
+    "http",
+    "tls",
+    "unknown",
+}
 
 
 def print_report(
@@ -36,11 +91,18 @@ def print_report(
     use_rich: bool | None = None,
     stream: TextIO | None = None,
 ) -> None:
-    """Print the report with a Rich panel in interactive terminals and plain text otherwise."""
-    text = render_report(result, input_type=input_type, identity=identity, redact=redact)
+    """Print the report with Rich or deterministic plain text."""
+    text = render_report(
+        result, input_type=input_type, identity=identity, redact=redact
+    )
     if use_rich is None:
         use_rich = _should_use_rich_output()
-    if not use_rich or rich_console_cls is None or rich_panel_cls is None:
+    if (
+        not use_rich
+        or rich_console_cls is None
+        or rich_panel_cls is None
+        or rich_text_cls is None
+    ):
         if stream is not None:
             print(text, file=stream)
         else:
@@ -54,13 +116,72 @@ def print_report(
     )
     target.print(
         rich_panel_cls(
-            text,
-            title="[bold cyan]Traffic analysis report[/bold cyan]",
+            _rich_report_text(text),
+            title=rich_text_cls(
+                "Traffic analysis report", style=REPORT_STYLES["title"]
+            ),
             subtitle=f"[dim]{input_type}[/dim]",
             border_style="cyan",
             padding=(0, 1),
         )
     )
+
+
+def _rich_report_text(report: str) -> TextType:
+    """Apply semantic styles to generated report text without parsing markup."""
+    styled = _new_rich_text()
+    for index, line in enumerate(report.splitlines()):
+        if index:
+            styled.append("\n")
+        styled.append(_style_report_line(line))
+    return styled
+
+
+def _style_report_line(line: str) -> TextType:
+    styled = _new_rich_text(line)
+    stripped = line.strip()
+    if stripped == "Traffic analysis report":
+        styled.stylize(REPORT_STYLES["title"])
+    elif stripped in _SECTION_NAMES:
+        styled.stylize(REPORT_STYLES["section"])
+    elif stripped == "None." or stripped.startswith(
+        (_UNAVAILABLE_MARKER, "No traffic captured.")
+    ):
+        styled.stylize(REPORT_STYLES["unavailable"])
+    elif any(marker in stripped for marker in _AVAILABLE_MARKERS):
+        styled.stylize(REPORT_STYLES["available"])
+    elif stripped.startswith(
+        (
+            "malformed_packet",
+            "unsupported_protocol",
+            "skipped_packet",
+            "processing_warning",
+        )
+    ):
+        styled.stylize(REPORT_STYLES["warning"])
+
+    if ": " in line and stripped.split(": ", 1)[0] in {"Packets", "Bytes"}:
+        styled.stylize(REPORT_STYLES["total"])
+    first_word = stripped.split(": ", 1)[0]
+    if first_word in _PROTOCOL_NAMES:
+        protocol_start = len(line) - len(line.lstrip())
+        styled.stylize(
+            REPORT_STYLES["protocol"],
+            protocol_start,
+            protocol_start + len(first_word),
+        )
+    for pattern in _IDENTIFIER_PATTERNS:
+        for match in pattern.finditer(line):
+            styled.stylize(REPORT_STYLES["identifier"], match.start(), match.end())
+    for match in _PORT_PATTERN.finditer(line):
+        styled.stylize(REPORT_STYLES["port"], match.start(), match.end())
+    return styled
+
+
+def _new_rich_text(value: str = "") -> TextType:
+    if rich_text_cls is None:
+        raise RuntimeError("Rich text support is unavailable")
+    return rich_text_cls(value)
 
 
 def _should_use_rich_output() -> bool:

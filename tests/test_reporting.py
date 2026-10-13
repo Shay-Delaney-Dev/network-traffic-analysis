@@ -119,3 +119,45 @@ def test_print_report_uses_rich_panel_when_enabled_but_keeps_redaction() -> None
     assert "Top source endpoints" in output
     assert "<redacted:" in output
     assert "192.0.2.1" not in output
+
+
+def test_rich_report_applies_semantic_styles_without_parsing_values_as_markup() -> None:
+    from traffic_analyser.reporting import REPORT_STYLES, _rich_report_text
+
+    styled = _rich_report_text(
+        render_report(
+            populated_result(),
+            input_type="pcap",
+            identity="capture.pcap",
+        )
+    )
+
+    assert any(span.style == REPORT_STYLES["section"] for span in styled.spans)
+    assert any(span.style == REPORT_STYLES["total"] for span in styled.spans)
+    assert any(span.style == REPORT_STYLES["identifier"] for span in styled.spans)
+    assert any(span.style == REPORT_STYLES["port"] for span in styled.spans)
+    assert any(span.style == REPORT_STYLES["available"] for span in styled.spans)
+    assert any(span.style == REPORT_STYLES["warning"] for span in styled.spans)
+    assert "[bold red]" not in styled.plain
+
+
+def test_plain_report_is_deterministic_and_has_no_terminal_markers(monkeypatch) -> None:
+    monkeypatch.setenv("NO_COLOR", "1")
+    first = StringIO()
+    second = StringIO()
+
+    print_report(
+        populated_result(),
+        input_type="pcap",
+        identity="capture.pcap",
+        stream=first,
+    )
+    print_report(
+        populated_result(),
+        input_type="pcap",
+        identity="capture.pcap",
+        stream=second,
+    )
+
+    assert first.getvalue() == second.getvalue()
+    assert "\x1b[" not in first.getvalue()
