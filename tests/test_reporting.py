@@ -1,5 +1,8 @@
 from datetime import UTC, datetime
+from io import StringIO
 from ipaddress import IPv4Address
+
+from rich.console import Console
 
 from traffic_analyser.models import (
     AnalysisResult,
@@ -16,7 +19,7 @@ from traffic_analyser.models import (
     TlsMetadata,
     WarningCategory,
 )
-from traffic_analyser.reporting import render_report
+from traffic_analyser.reporting import print_report, render_report
 
 
 def populated_result() -> AnalysisResult:
@@ -96,3 +99,23 @@ def test_empty_and_all_unavailable_results_render_clear_messages() -> None:
     assert "No observable conversations." in report
     assert "No DNS metadata available." in report
     assert "Processing warnings\n  None." in report
+
+
+def test_print_report_uses_rich_panel_when_enabled_but_keeps_redaction() -> None:
+    buffer = StringIO()
+    console = Console(file=buffer, force_terminal=True, color_system="standard")
+
+    print_report(
+        populated_result(),
+        input_type="pcap",
+        identity="/private/capture.pcap",
+        redact=True,
+        console=console,
+        use_rich=True,
+    )
+
+    output = buffer.getvalue()
+    assert "Traffic analysis report" in output
+    assert "Top source endpoints" in output
+    assert "<redacted:" in output
+    assert "192.0.2.1" not in output

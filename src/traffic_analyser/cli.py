@@ -25,7 +25,7 @@ from traffic_analyser.limits import (
 )
 from traffic_analyser.models import AnalysisError, ErrorCategory, ExitCode
 from traffic_analyser.pcap_reader import OfflineInputError
-from traffic_analyser.reporting import render_report
+from traffic_analyser.reporting import print_report
 from traffic_analyser.visualization import (
     PlotOutputError,
     prepare_plot_backend,
@@ -218,13 +218,11 @@ def run_live(args: argparse.Namespace) -> int:
         raise _CliFailure(
             AnalysisError(ErrorCategory.CAPTURE_BACKEND, str(error))
         ) from error
-    print(
-        render_report(
-            args.analysis_result,
-            input_type="live",
-            identity=args.interface,
-            redact=args.redact,
-        )
+    print_report(
+        args.analysis_result,
+        input_type="live",
+        identity=args.interface,
+        redact=args.redact,
     )
     if args.show_plots or args.save_plots:
         prepare_plot_backend(interactive=args.show_plots)
@@ -248,13 +246,11 @@ def run_pcap(args: argparse.Namespace) -> int:
         raise _CliFailure(
             AnalysisError(ErrorCategory.OFFLINE_INPUT, str(error))
         ) from error
-    print(
-        render_report(
-            args.analysis_result,
-            input_type="pcap",
-            identity=args.path,
-            redact=args.redact,
-        )
+    print_report(
+        args.analysis_result,
+        input_type="pcap",
+        identity=args.path,
+        redact=args.redact,
     )
     if args.show_plots or args.save_plots:
         prepare_plot_backend(interactive=args.show_plots)
