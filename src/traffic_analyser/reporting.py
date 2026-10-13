@@ -2,10 +2,75 @@
 
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
+from typing import TYPE_CHECKING, Any, TextIO
+
+if TYPE_CHECKING:
+    from rich.console import Console as ConsoleType
+
+rich_console_cls: Any | None
+rich_panel_cls: Any | None
+
+try:
+    from rich.console import Console as _RichConsole
+    from rich.panel import Panel as _RichPanel
+    rich_console_cls = _RichConsole
+    rich_panel_cls = _RichPanel
+except ImportError:  # pragma: no cover - optional runtime dependency fallback
+    rich_console_cls = None
+    rich_panel_cls = None
 
 from traffic_analyser.models import AnalysisResult, ProcessingWarning
 from traffic_analyser.privacy import Redactor
+
+
+def print_report(
+    result: AnalysisResult,
+    *,
+    input_type: str,
+    identity: str,
+    redact: bool = False,
+    console: ConsoleType | None = None,
+    use_rich: bool | None = None,
+    stream: TextIO | None = None,
+) -> None:
+    """Print the report with a Rich panel in interactive terminals and plain text otherwise."""
+    text = render_report(result, input_type=input_type, identity=identity, redact=redact)
+    if use_rich is None:
+        use_rich = _should_use_rich_output()
+    if not use_rich or rich_console_cls is None or rich_panel_cls is None:
+        if stream is not None:
+            print(text, file=stream)
+        else:
+            print(text)
+        return
+
+    target = (
+        console
+        if console is not None
+        else rich_console_cls(file=stream if stream is not None else None)
+    )
+    target.print(
+        rich_panel_cls(
+            text,
+            title="[bold cyan]Traffic analysis report[/bold cyan]",
+            subtitle=f"[dim]{input_type}[/dim]",
+            border_style="cyan",
+            padding=(0, 1),
+        )
+    )
+
+
+def _should_use_rich_output() -> bool:
+    """Only use Rich in interactive terminals where colour output is supported."""
+    if rich_console_cls is None or rich_panel_cls is None:
+        return False
+    if os.environ.get("NO_COLOR") is not None:
+        return False
+    stdout = sys.stdout
+    return bool(stdout.isatty())
 
 
 def render_report(

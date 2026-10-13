@@ -145,6 +145,11 @@ packet-size information, available protocol metadata, and warnings. Empty,
 all-skipped, and no-observable-field inputs render a clear report rather than
 failing.
 
+Console output uses Rich styling when the terminal is interactive and supports
+colour. In non-interactive terminals, redirected output, or when colour output
+is disabled via `NO_COLOR`, the same bounded report is rendered as plain text so
+scripts and logs remain deterministic and easy to capture.
+
 Plots are opt-in. `--show-plots` displays them, `--save-plots DIRECTORY`
 saves them, and using neither option does neither. Both options may be used
 together. Saving requires an existing writable directory and refuses to
