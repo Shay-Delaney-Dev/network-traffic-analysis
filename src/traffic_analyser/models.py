@@ -158,6 +158,22 @@ class PacketSizeCounter:
 
 
 @dataclass(frozen=True, slots=True)
+class FlowSummary:
+    """Bounded metadata summary for one canonical bidirectional flow."""
+
+    conversation: ConversationKey
+    packets: int
+    bytes: int
+    first_seen: datetime
+    last_seen: datetime
+    duration_seconds: float
+    forward_packets: int
+    reverse_packets: int
+    packets_per_second: float
+    bytes_per_second: float
+
+
+@dataclass(frozen=True, slots=True)
 class TimeBucket:
     start: datetime
     end: datetime
@@ -201,6 +217,7 @@ class AnalysisResult:
     top_source_endpoints: tuple[tuple[EndpointKey, int], ...] = ()
     top_destination_endpoints: tuple[tuple[EndpointKey, int], ...] = ()
     top_conversations: tuple[tuple[ConversationKey, int], ...] = ()
+    top_flows: tuple[FlowSummary, ...] = ()
     packet_sizes: tuple[PacketSizeCounter, ...] = ()
     processing: ProcessingStatistics = field(default_factory=ProcessingStatistics)
     warnings: tuple[ProcessingWarning, ...] = ()
@@ -254,6 +271,7 @@ __all__ = [
     "EndpointKey",
     "ErrorCategory",
     "ExitCode",
+    "FlowSummary",
     "HttpMetadata",
     "IPAddress",
     "PacketMetadata",

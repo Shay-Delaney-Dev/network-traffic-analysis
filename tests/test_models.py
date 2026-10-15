@@ -55,6 +55,7 @@ def test_empty_analysis_result_has_typed_empty_collections() -> None:
     assert result.processing == ProcessingStatistics()
     assert result.time_buckets == ()
     assert result.warnings == ()
+    assert result.top_flows == ()
 
 
 def test_error_categories_map_to_documented_exit_codes() -> None:

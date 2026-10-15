@@ -9,6 +9,7 @@ from traffic_analyser.models import (
     ConversationKey,
     DnsMetadata,
     EndpointKey,
+    FlowSummary,
     HttpMetadata,
     PacketSizeCounter,
     ProcessingStatistics,
@@ -42,6 +43,18 @@ def populated_result() -> AnalysisResult:
         top_source_endpoints=((first, 2),),
         top_destination_endpoints=((second, 2),),
         top_conversations=((ConversationKey.from_endpoints(first, second), 2),),
+        top_flows=(FlowSummary(
+            conversation=ConversationKey.from_endpoints(first, second),
+            packets=2,
+            bytes=160,
+            first_seen=datetime(2026, 1, 1, tzinfo=UTC),
+            last_seen=datetime(2026, 1, 1, 0, 0, 2, tzinfo=UTC),
+            duration_seconds=2.0,
+            forward_packets=1,
+            reverse_packets=1,
+            packets_per_second=1.0,
+            bytes_per_second=80.0,
+        ),),
         packet_sizes=(PacketSizeCounter(80, 2),),
         processing=ProcessingStatistics(received=2, decoded=2),
         warnings=(
@@ -73,6 +86,7 @@ def test_report_contains_all_sections_and_redacts_sensitive_values() -> None:
         "Top source endpoints",
         "Top destination endpoints",
         "Top conversations",
+        "Flow analytics",
         "Packet-size summary",
         "DNS metadata",
         "HTTP metadata",
@@ -88,6 +102,7 @@ def test_report_contains_all_sections_and_redacts_sensitive_values() -> None:
     ):
         assert sensitive not in report
     assert "<redacted:" in report
+    assert "1 forward, 1 reverse" in report
 
 
 def test_empty_and_all_unavailable_results_render_clear_messages() -> None:

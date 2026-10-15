@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Generic, TypeAlias, TypeVar
 
@@ -13,6 +14,7 @@ from traffic_analyser.models import (
     ConversationKey,
     DnsMetadata,
     EndpointKey,
+    FlowSummary,
     HttpMetadata,
     PacketMetadata,
     PacketSizeCounter,
@@ -27,6 +29,60 @@ from traffic_analyser.models import (
 
 AggregateInput: TypeAlias = PacketMetadata | DecodeResult
 AggregateKey = TypeVar("AggregateKey", EndpointKey, ConversationKey)
+
+
+@dataclass(slots=True)
+class _FlowState:
+    conversation: ConversationKey
+    packets: int = 0
+    bytes: int = 0
+    first_seen: datetime | None = None
+    last_seen: datetime | None = None
+    forward_packets: int = 0
+    reverse_packets: int = 0
+
+    def add(self, metadata: PacketMetadata) -> None:
+        source = metadata.source_endpoint()
+        destination = metadata.destination_endpoint()
+        self.packets += 1
+        self.bytes += metadata.captured_length
+        self.first_seen = (
+            metadata.timestamp
+            if self.first_seen is None
+            else min(self.first_seen, metadata.timestamp)
+        )
+        self.last_seen = (
+            metadata.timestamp
+            if self.last_seen is None
+            else max(self.last_seen, metadata.timestamp)
+        )
+        if source == self.conversation.first and destination == self.conversation.second:
+            self.forward_packets += 1
+        elif source == self.conversation.second and destination == self.conversation.first:
+            self.reverse_packets += 1
+
+    def summary(self) -> FlowSummary:
+        if self.first_seen is None or self.last_seen is None:
+            raise RuntimeError("flow state has no timestamps")
+        duration = max(0.0, (self.last_seen - self.first_seen).total_seconds())
+        if duration == 0.0:
+            packets_per_second = 0.0
+            bytes_per_second = 0.0
+        else:
+            packets_per_second = self.packets / duration
+            bytes_per_second = self.bytes / duration
+        return FlowSummary(
+            conversation=self.conversation,
+            packets=self.packets,
+            bytes=self.bytes,
+            first_seen=self.first_seen,
+            last_seen=self.last_seen,
+            duration_seconds=duration,
+            forward_packets=self.forward_packets,
+            reverse_packets=self.reverse_packets,
+            packets_per_second=packets_per_second,
+            bytes_per_second=bytes_per_second,
+        )
 
 
 class _BoundedCounter(Generic[AggregateKey]):
@@ -67,6 +123,7 @@ class Aggregator:
         self._sources = _BoundedCounter[EndpointKey](self.limits.top_n)
         self._destinations = _BoundedCounter[EndpointKey](self.limits.top_n)
         self._conversations = _BoundedCounter[ConversationKey](self.limits.top_n)
+        self._flows: dict[ConversationKey, _FlowState] = {}
         self._packet_sizes: Counter[int] = Counter()
         self._dns = BoundedSamples[DnsMetadata](self.limits.metadata_samples)
         self._http = BoundedSamples[HttpMetadata](self.limits.metadata_samples)
@@ -119,6 +176,7 @@ class Aggregator:
             top_source_endpoints=self._top(self._sources),
             top_destination_endpoints=self._top(self._destinations),
             top_conversations=self._top(self._conversations),
+            top_flows=self._top_flows(),
             packet_sizes=tuple(
                 PacketSizeCounter(size, count)
                 for size, count in sorted(self._packet_sizes.items())
@@ -174,6 +232,18 @@ class Aggregator:
         conversation = metadata.conversation()
         if conversation is not None:
             self._conversations.increment(conversation)
+            flow = self._flows.setdefault(conversation, _FlowState(conversation))
+            flow.add(metadata)
+            if len(self._flows) > self.limits.top_n:
+                retained = sorted(
+                    self._flows.values(),
+                    key=lambda item: (
+                        -item.packets,
+                        -item.bytes,
+                        item.conversation.canonical(),
+                    ),
+                )[: self.limits.top_n]
+                self._flows = {item.conversation: item for item in retained}
 
     def _count_skip(self, outcome: DecodeResult) -> None:
         if outcome.status is DecodeStatus.UNSUPPORTED:
@@ -202,6 +272,19 @@ class Aggregator:
         return tuple(
             sorted(
                 counter.items(), key=lambda item: (-item[1], item[0].canonical())
+            )[: self.limits.top_n]
+        )
+
+    def _top_flows(self) -> tuple[FlowSummary, ...]:
+        return tuple(
+            item.summary()
+            for item in sorted(
+                self._flows.values(),
+                key=lambda item: (
+                    -item.packets,
+                    -item.bytes,
+                    item.conversation.canonical(),
+                ),
             )[: self.limits.top_n]
         )
 
