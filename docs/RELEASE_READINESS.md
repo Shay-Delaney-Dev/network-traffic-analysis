@@ -68,6 +68,7 @@ confirmed on each target host during deployment.
 - [x] Security tests cover subprocesses, raw capture writes, payload retention, and safe filenames.
 - [x] README and CLI help include authorised-use, privacy, permission, and platform guidance.
 - [x] Dependency audit completed; local-package audit limitation is recorded above.
+- [x] Versioned metadata-only JSON export, redaction, and destination safety are tested and documented.
 - [ ] Native live capture verified with libpcap on Linux and macOS and Npcap on Windows.
 
 ## Assumptions and deferred decisions
@@ -78,5 +79,6 @@ confirmed on each target host during deployment.
   representation remain the MVP contract.
 - Native live-capture verification is deployment work because this environment
   cannot safely or portably exercise all three operating systems.
-- Structured exports, compressed archives, uploads, external analyzers, and
-  TLS decryption remain outside the MVP.
+- CSV exports, compressed archives, uploads, external analyzers, and TLS
+  decryption remain outside the product scope. JSON export is limited to the
+  explicit versioned metadata-only contract documented in `README.md`.

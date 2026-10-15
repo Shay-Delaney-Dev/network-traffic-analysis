@@ -9,6 +9,7 @@ from collections.abc import Callable, Sequence
 
 from traffic_analyser import __version__
 from traffic_analyser.capture import CaptureAdapter, CaptureError
+from traffic_analyser.json_export import JsonExportError, export_json
 from traffic_analyser.limits import (
     DEFAULT_BUCKET_SIZE,
     DEFAULT_BYTE_COUNT,
@@ -130,6 +131,11 @@ def _add_shared_options(parser: argparse.ArgumentParser) -> None:
         metavar="LEVEL",
         help="diagnostic log level (DEBUG, INFO, WARNING, ERROR, or CRITICAL)",
     )
+    parser.add_argument(
+        "--export-json",
+        metavar="PATH",
+        help="write one versioned JSON analysis document to PATH",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -224,6 +230,7 @@ def run_live(args: argparse.Namespace) -> int:
         identity=args.interface,
         redact=args.redact,
     )
+    _export_result(args)
     if args.show_plots or args.save_plots:
         prepare_plot_backend(interactive=args.show_plots)
         try:
@@ -252,6 +259,7 @@ def run_pcap(args: argparse.Namespace) -> int:
         identity=args.path,
         redact=args.redact,
     )
+    _export_result(args)
     if args.show_plots or args.save_plots:
         prepare_plot_backend(interactive=args.show_plots)
         try:
@@ -268,6 +276,17 @@ def run_pcap(args: argparse.Namespace) -> int:
                 AnalysisError(ErrorCategory.INVALID_CLI_INPUT, str(error))
             ) from error
     return int(ExitCode.SUCCESS)
+
+
+def _export_result(args: argparse.Namespace) -> None:
+    if not args.export_json:
+        return
+    try:
+        export_json(args.analysis_result, args.export_json, redact=args.redact)
+    except JsonExportError as error:
+        raise _CliFailure(
+            AnalysisError(ErrorCategory.INVALID_CLI_INPUT, str(error))
+        ) from error
 
 
 def dispatch(

@@ -74,6 +74,8 @@ Both analysis commands support:
 	deterministic labels.
 - `--show-plots`: display the four plots after analysis.
 - `--save-plots DIRECTORY`: save the four plots to an existing directory.
+- `--export-json PATH`: explicitly write one versioned JSON analysis document
+	to a new `.json` file at PATH; an existing destination is rejected.
 - `--log-level LEVEL`: diagnostic level `DEBUG`, `INFO`, `WARNING`, `ERROR`,
 	or `CRITICAL`; default `WARNING`.
 
@@ -174,6 +176,23 @@ and do not include user-provided paths or identifiers.
 Plots use a non-interactive backend when only saving is requested, which makes
 headless use and automation supported.
 
+### JSON export
+
+`--export-json PATH` writes a deterministic schema version `1.0` document with
+totals, timezone-aware time ranges and buckets, protocol counters, bounded top
+endpoints and conversations, packet-size counters, processing statistics,
+warnings, and bounded DNS, HTTP, and TLS metadata. Values are serialized from
+the existing aggregate result only; raw packets, payloads, credentials,
+cookies, tokens, private keys, and arbitrary packet contents are never
+included. `--redact` is applied before serialization to endpoint and protocol
+metadata identifiers.
+
+The destination must be a new JSON file in an existing writable, non-symlink
+directory. Existing files are never overwritten, so repeated exports require
+distinct destinations. The schema version is part of the compatibility
+contract and may be extended only through a documented schema change. JSON
+export is explicit-only and does not upload data or save raw captures.
+
 ## Exit codes
 
 - `0`: successful analysis, including a clean stop or partial result after
@@ -230,5 +249,6 @@ platform-specific capture validation after the MVP release criteria are met.
 This MVP does not provide a web or GUI interface, uploads or network
 transmission, raw-capture persistence, arbitrary payload inspection, password
 or secret extraction, TLS decryption, compressed archive support, structured
-JSON or CSV export, external analyzers such as tshark or Wireshark, intrusion
-verdicts, alerting, or anomaly detection.
+CSV export, external analyzers such as tshark or Wireshark, intrusion verdicts,
+alerting, or anomaly detection. JSON export is limited to the explicit,
+versioned metadata-only option described above.

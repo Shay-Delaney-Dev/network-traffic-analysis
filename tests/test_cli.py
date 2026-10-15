@@ -28,6 +28,8 @@ def test_parser_supports_live_options() -> None:
             "--show-plots",
             "--save-plots",
             "reports",
+            "--export-json",
+            "reports/analysis.json",
             "--log-level",
             "INFO",
         ]
@@ -44,6 +46,7 @@ def test_parser_supports_live_options() -> None:
     assert args.redact is True
     assert args.show_plots is True
     assert args.save_plots == "reports"
+    assert args.export_json == "reports/analysis.json"
 
 
 def test_parser_supports_pcap_options() -> None:
@@ -207,6 +210,29 @@ def test_live_save_plots_writes_four_timestamped_files(
         == 0
     )
     assert len(tuple(tmp_path.glob("*.png"))) == 4
+
+
+def test_live_handler_writes_requested_export(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    monkeypatch.setattr(
+        "traffic_analyser.cli.analyze_live", lambda *_args, **_kwargs: AnalysisResult()
+    )
+    destination = tmp_path / "live-analysis.json"
+
+    assert (
+        main(
+            [
+                "live",
+                "--interface",
+                "eth0",
+                "--export-json",
+                str(destination),
+            ]
+        )
+        == 0
+    )
+    assert destination.is_file()
 
 
 def test_pcap_plot_modes_are_explicit(
