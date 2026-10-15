@@ -2,8 +2,8 @@
 
 `traffic-analyser` is a local, metadata-only analyser for authorised inspection
 of live traffic and local classic pcap or pcapng files. It reports traffic
-volume, protocol distribution, top endpoints and conversations, packet sizes,
-and observable DNS, HTTP, and TLS handshake metadata.
+volume, protocol distribution, top endpoints and conversations, bounded flow
+analytics, packet sizes, and observable DNS, HTTP, and TLS handshake metadata.
 
 Only inspect traffic that you are authorised to access. The tool is not an
 intrusion-detection system and does not bypass access controls or monitoring.
@@ -142,10 +142,19 @@ identifiers from offline guessing of likely input values.
 ## Reports and plots
 
 The normal report includes time range, packet and byte totals, processing
-counts, traffic volume, protocol totals, top endpoints, conversations,
-packet-size information, available protocol metadata, and warnings. Empty,
-all-skipped, and no-observable-field inputs render a clear report rather than
-failing.
+counts, traffic volume, protocol totals, top endpoints, conversations, bounded
+flow analytics, packet-size information, available protocol metadata, and
+warnings. Empty, all-skipped, and no-observable-field inputs render a clear
+report rather than failing.
+
+Flow analytics use the canonical bidirectional conversation key. Each retained
+flow includes packet and captured-byte totals, first-seen and last-seen
+timestamps, elapsed duration, forward and reverse packet counts, and average
+packet/byte rates over that observed duration. A one-packet or equal-timestamp
+flow has zero duration and zero rates. Flow state is bounded by the configured
+top-N limit and is evicted deterministically by packet count, byte count, then
+canonical conversation key; packets arriving after eviction start a new
+retained summary.
 
 Console output uses stable semantic Rich styles for section headings, totals,
 protocols, identifiers, ports, available metadata, and warnings when the
@@ -180,8 +189,8 @@ headless use and automation supported.
 
 `--export-json PATH` writes a deterministic schema version `1.0` document with
 totals, timezone-aware time ranges and buckets, protocol counters, bounded top
-endpoints and conversations, packet-size counters, processing statistics,
-warnings, and bounded DNS, HTTP, and TLS metadata. Values are serialized from
+endpoints and conversations, bounded flow analytics, packet-size counters,
+processing statistics, warnings, and bounded DNS, HTTP, and TLS metadata. Values are serialized from
 the existing aggregate result only; raw packets, payloads, credentials,
 cookies, tokens, private keys, and arbitrary packet contents are never
 included. `--redact` is applied before serialization to endpoint and protocol

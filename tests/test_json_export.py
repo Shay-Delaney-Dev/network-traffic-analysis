@@ -15,6 +15,7 @@ from traffic_analyser.models import (
     ConversationKey,
     DnsMetadata,
     EndpointKey,
+    FlowSummary,
     HttpMetadata,
     PacketSizeCounter,
     ProcessingStatistics,
@@ -45,6 +46,18 @@ def populated_result() -> AnalysisResult:
         top_source_endpoints=((first, 2),),
         top_destination_endpoints=((second, 2),),
         top_conversations=((ConversationKey.from_endpoints(first, second), 2),),
+        top_flows=(FlowSummary(
+            conversation=ConversationKey.from_endpoints(first, second),
+            packets=2,
+            bytes=160,
+            first_seen=datetime(2026, 1, 1, tzinfo=UTC),
+            last_seen=datetime(2026, 1, 1, 0, 0, 2, tzinfo=UTC),
+            duration_seconds=2.0,
+            forward_packets=1,
+            reverse_packets=1,
+            packets_per_second=1.0,
+            bytes_per_second=80.0,
+        ),),
         packet_sizes=(PacketSizeCounter(80, 2),),
         processing=ProcessingStatistics(received=2, decoded=2),
         warnings=(
@@ -65,6 +78,20 @@ def test_serialize_analysis_has_stable_metadata_only_schema_and_redaction() -> N
     assert document["analysis"]["protocols"] == [
         {"protocol": "tcp", "packets": 2, "bytes": 160}
     ]
+    assert document["analysis"]["flows"] == [
+        {
+            "conversation": document["analysis"]["flows"][0]["conversation"],
+            "packets": 2,
+            "bytes": 160,
+            "first_seen": "2026-01-01T00:00:00+00:00",
+            "last_seen": "2026-01-01T00:00:02+00:00",
+            "duration_seconds": 2.0,
+            "forward_packets": 1,
+            "reverse_packets": 1,
+            "packets_per_second": 1.0,
+            "bytes_per_second": 80.0,
+        }
+    ]
     serialized = json.dumps(document, sort_keys=True)
     for sensitive in (
         "192.0.2.1",
@@ -83,6 +110,7 @@ def test_empty_result_serializes_with_null_time_range() -> None:
 
     assert document["analysis"]["time_range"] == {"start": None, "end": None}
     assert document["analysis"]["metadata"] == {"dns": [], "http": [], "tls": []}
+    assert document["analysis"]["flows"] == []
     assert json.loads(json.dumps(document)) == document
 
 

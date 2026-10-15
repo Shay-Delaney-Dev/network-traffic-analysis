@@ -237,6 +237,9 @@ def render_report(
         "Top conversations",
         *_conversation_lines(result, redactor),
         "",
+        "Flow analytics",
+        *_flow_lines(result, redactor),
+        "",
         "Packet-size summary",
         *_packet_size_lines(result),
         "",
@@ -298,6 +301,20 @@ def _conversation_lines(result: AnalysisResult, redactor: Redactor) -> list[str]
     return [
         f"  {redactor.conversation(conversation)}: {count}"
         for conversation, count in result.top_conversations
+    ]
+
+
+def _flow_lines(result: AnalysisResult, redactor: Redactor) -> list[str]:
+    if not result.top_flows:
+        return ["  No flow analytics available."]
+    return [
+        f"  {redactor.conversation(flow.conversation)}: "
+        f"{flow.packets} packets, {flow.bytes} bytes, "
+        f"{flow.forward_packets} forward, {flow.reverse_packets} reverse, "
+        f"duration {flow.duration_seconds:.6f}s, "
+        f"rates {flow.packets_per_second:.6f} packets/s, "
+        f"{flow.bytes_per_second:.6f} bytes/s"
+        for flow in result.top_flows
     ]
 
 

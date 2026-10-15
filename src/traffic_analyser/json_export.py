@@ -93,6 +93,21 @@ def serialize_analysis(
                 }
                 for conversation, count in result.top_conversations
             ],
+            "flows": [
+                {
+                    "conversation": redactor.conversation(flow.conversation),
+                    "packets": flow.packets,
+                    "bytes": flow.bytes,
+                    "first_seen": _timestamp(flow.first_seen),
+                    "last_seen": _timestamp(flow.last_seen),
+                    "duration_seconds": flow.duration_seconds,
+                    "forward_packets": flow.forward_packets,
+                    "reverse_packets": flow.reverse_packets,
+                    "packets_per_second": flow.packets_per_second,
+                    "bytes_per_second": flow.bytes_per_second,
+                }
+                for flow in result.top_flows
+            ],
             "packet_sizes": [
                 {"size": item.size, "packets": item.packets}
                 for item in result.packet_sizes

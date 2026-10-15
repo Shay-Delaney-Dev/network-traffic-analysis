@@ -92,6 +92,74 @@ def test_bidirectional_ipv4_ipv6_conversations_and_ties_are_deterministic() -> N
     assert result.top_conversations[0][0].canonical() == "192.0.2.1:1234 <-> 192.0.2.2:443"
 
 
+def test_flow_summaries_track_direction_duration_and_rates() -> None:
+    aggregator = Aggregator()
+    first = packet(timestamp=TIMESTAMP, size=60)
+    reverse = packet(
+        timestamp=TIMESTAMP.replace(second=3),
+        size=100,
+        source="192.0.2.2",
+        destination="192.0.2.1",
+        source_port=443,
+        destination_port=1234,
+    )
+
+    aggregator.add(first)
+    aggregator.add(reverse)
+
+    flow = aggregator.result().top_flows[0]
+
+    assert flow.packets == 2
+    assert flow.bytes == 160
+    assert flow.first_seen == TIMESTAMP
+    assert flow.last_seen == TIMESTAMP.replace(second=3)
+    assert flow.duration_seconds == 2.0
+    assert (flow.forward_packets, flow.reverse_packets) == (1, 1)
+    assert flow.packets_per_second == 1.0
+    assert flow.bytes_per_second == 80.0
+
+
+def test_one_packet_flow_has_zero_rates_and_top_n_eviction_is_bounded() -> None:
+    aggregator = Aggregator(ResourceLimits(top_n=1))
+    aggregator.add(packet())
+    one_packet = aggregator.result().top_flows[0]
+
+    assert one_packet.duration_seconds == 0.0
+    assert one_packet.packets_per_second == 0.0
+    assert one_packet.bytes_per_second == 0.0
+
+    aggregator.add(packet(source="192.0.2.3", destination="192.0.2.4"))
+    assert len(aggregator.result().top_flows) == 1
+    assert len(aggregator._flows) == 1
+
+
+def test_ipv6_flow_and_packets_without_endpoints_are_handled() -> None:
+    aggregator = Aggregator()
+    ipv6_packet = PacketMetadata(
+        timestamp=TIMESTAMP,
+        captured_length=70,
+        original_length=70,
+        network_protocol=Protocol.IPV6,
+        source_address=IPv6Address("2001:db8::1"),
+        destination_address=IPv6Address("2001:db8::2"),
+    )
+    no_endpoints = PacketMetadata(
+        timestamp=TIMESTAMP,
+        captured_length=14,
+        original_length=14,
+        network_protocol=Protocol.IPV6,
+    )
+
+    aggregator.add(ipv6_packet)
+    aggregator.add(no_endpoints)
+
+    result = aggregator.result()
+
+    assert len(result.top_flows) == 1
+    assert result.top_flows[0].conversation.canonical() == "2001:db8::1 <-> 2001:db8::2"
+    assert result.total_packets == 2
+
+
 def test_skip_outcomes_are_counted_and_warned_without_aborting() -> None:
     aggregator = Aggregator()
     aggregator.add(DecodeResult(DecodeStatus.MALFORMED, reason="invalid lengths"))
